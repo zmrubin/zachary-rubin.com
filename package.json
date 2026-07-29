@@ -1,0 +1,17 @@
+{
+  "name": "zachary-rubin-time-capsule",
+  "version": "1.0.0",
+  "description": "Static time capsule and archive of https://zachary-rubin.com/ preserving all pages and Wix CDN assets offline.",
+  "private": true,
+  "scripts": {
+    "dev": "npx -y serve@latest . -p 8001"
+  },
+  "keywords": [
+    "time-capsule",
+    "wix-archive",
+    "static-site",
+    "zachary-rubin"
+  ],
+  "author": "Zachary Rubin",
+  "license": "UNLICENSED"
+}

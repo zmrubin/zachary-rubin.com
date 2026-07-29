@@ -1,0 +1,12 @@
+.DS_Store
+
+# Raw Wix export dump — a temporary download artifact. Everything useful in
+# here already exists, organized and deduplicated, under _assets/ and ugd/.
+# Also contains a 355MB zip, which exceeds GitHub's 100MB hard file limit.
+/Downloaded files/
+/site files - */
+
+# Two source video files that exceed GitHub's 100MB hard limit. Not currently
+# referenced by any page; re-add via Git LFS if they're needed later.
+/_assets/media/IMG_0667.MOV
+/_assets/media/IMG_0800.MOV

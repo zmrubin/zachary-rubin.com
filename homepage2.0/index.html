@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Zachary Rubin — Engineer, Inventor, Entrepreneur</title>
+  <meta name="description" content="Engineer, inventor and entrepreneur. Robotics, vehicles at speed, patents, and the ocean." />
+  <meta name="theme-color" content="#02171f" />
+  <link rel="stylesheet" href="./css/app.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/build/three.module.js",
+        "three/addons/": "./vendor/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+
+  <!-- Boot veil -------------------------------------------------------- -->
+  <div id="boot">
+    <div class="boot-inner">
+      <div class="boot-ring"></div>
+      <div class="boot-text">Initializing</div>
+    </div>
+  </div>
+
+  <!-- HUD -------------------------------------------------------------- -->
+  <div id="hud">
+    <header id="topbar">
+      <a class="brand" href="#" data-ui="1">
+        <span class="brand-mark">ZR</span>
+        <span class="brand-lines">
+          <span class="brand-name">Zachary Rubin</span>
+          <span class="brand-role">Engineer · Inventor · Entrepreneur</span>
+        </span>
+      </a>
+      <div class="nav-wrap">
+        <button id="chart-toggle" data-ui="1">
+          <span class="ct-glyph"><i></i><i></i><i></i></span>
+          <span>Chart</span>
+          <span class="ct-key">M</span>
+        </button>
+        <nav id="nav" aria-label="Sections">
+          <div class="nav-head">
+            <span>Station index</span>
+            <span id="nav-count"></span>
+          </div>
+          <div id="nav-list"></div>
+        </nav>
+      </div>
+    </header>
+
+    <!-- left depth gauge -->
+    <div id="gauge" aria-hidden="true">
+      <div class="gauge-rail">
+        <div id="gauge-ticks"></div>
+        <div id="gauge-fill"></div>
+        <div id="gauge-marker"></div>
+      </div>
+      <div class="gauge-readout">
+        <div id="altitude">−3800 m</div>
+        <div id="zone">Abyssal Zone</div>
+        <div id="zone-code">HADAL</div>
+      </div>
+    </div>
+
+    <!-- bottom-left telemetry -->
+    <div id="telemetry" aria-hidden="true">
+      <div class="t-head">
+        <span class="t-dot"></span>SYS NOMINAL
+      </div>
+      <div id="telemetry-body"></div>
+    </div>
+
+    <!-- hero -->
+    <div id="hero">
+      <div class="hero-kicker">Sea floor · station holding</div>
+      <h1 class="hero-title">
+        <span>Zachary</span>
+        <span>Rubin</span>
+      </h1>
+      <p class="hero-sub">
+        Engineer, inventor and entrepreneur. Robots that carry humans at highway
+        speeds, patents, and a standing interest in everything below the surface.
+      </p>
+      <div class="hero-meta">
+        <span>10 dossiers</span>
+        <span>Sea floor → low earth orbit</span>
+      </div>
+    </div>
+
+    <div id="hint">
+      <span class="hint-arrow"></span>
+      Scroll or drag to ascend
+    </div>
+
+    <div id="labels"></div>
+  </div>
+
+  <!-- Sounding chart (jump-to-depth navigator) ------------------------- -->
+  <div id="chart" aria-hidden="true" role="dialog" aria-modal="true"></div>
+
+  <!-- Detail panel ----------------------------------------------------- -->
+  <div id="panel" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="panel-sheet" data-ui="1">
+      <button id="panel-close" aria-label="Close">
+        <span></span><span></span>
+      </button>
+      <div id="panel-body" data-scrollable></div>
+    </div>
+  </div>
+
+  <noscript>
+    <div class="noscript">
+      This site is a hardware-accelerated 3D experience and needs JavaScript.
+    </div>
+  </noscript>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

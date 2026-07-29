@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wix Site Files - Progressive Download Tracker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .progress-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .instructions {
+            background: #e3f2fd;
+            border: 1px solid #90caf9;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+
+        .instructions h3 {
+            color: #1976d2;
+            margin-bottom: 15px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            line-height: 1.8;
+        }
+
+        .instructions li {
+            margin-bottom: 10px;
+        }
+
+        .instructions code {
+            background: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-success {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #45a049;
+        }
+
+        .files-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .files-table th {
+            background: #f5f5f5;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .files-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .files-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        .file-checkbox {
+            cursor: pointer;
+            width: 20px;
+            height: 20px;
+        }
+
+        .file-name {
+            font-family: monospace;
+            font-size: 12px;
+            word-break: break-all;
+        }
+
+        .file-type {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .type-image { background: #e1f5fe; color: #01579b; }
+        .type-video { background: #f3e5f5; color: #4a148c; }
+        .type-pdf { background: #ffebee; color: #b71c1c; }
+        .type-other { background: #f5f5f5; color: #424242; }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-pending { background: #fff3e0; color: #e65100; }
+        .status-downloading { background: #e3f2fd; color: #01579b; }
+        .status-completed { background: #e8f5e9; color: #1b5e20; }
+
+        .filter-controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        .filter-controls label {
+            margin-right: 20px;
+            font-weight: 500;
+        }
+
+        .filter-controls input[type="checkbox"] {
+            margin-right: 5px;
+        }
+
+        .summary {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 30px;
+        }
+
+        .summary h3 {
+            color: #1b5e20;
+            margin-bottom: 10px;
+        }
+
+        .footer {
+            background: #f5f5f5;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📥 Wix Site Files Download Tracker</h1>
+            <p>Organize and progressively download your backup files</p>
+        </header>
+
+        <div class="content">
+            <!-- Progress Section -->
+            <div class="progress-section">
+                <h3>Download Progress</h3>
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalFiles">0</div>
+                        <div class="stat-label">Total Files</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="completedFiles">0</div>
+                        <div class="stat-label">Downloaded</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="pendingFiles">0</div>
+                        <div class="stat-label">Remaining</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="progressPercent">0%</div>
+                        <div class="stat-label">Completion</div>
+                    </div>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+            </div>
+
+            <!-- Instructions -->
+            <div class="instructions">
+                <h3>📋 How to Use This Tracker</h3>
+                <ol>
+                    <li><strong>Go to your Wix Editor:</strong> Open Media → Site Files → Show More</li>
+                    <li><strong>Right-click on a file:</strong> Select "Download"</li>
+                    <li><strong>Mark as completed:</strong> Check the box next to each downloaded file</li>
+                    <li><strong>Organize by type:</strong> Download images first, then videos, then PDFs</li>
+                    <li><strong>Progressive approach:</strong> Download 10-20 files at a time to avoid browser overload</li>
+                </ol>
+            </div>
+
+            <!-- Controls -->
+            <div class="controls">
+                <button class="btn-primary" onclick="downloadAllLinks()">📥 Download All File Links</button>
+                <button class="btn-secondary" onclick="exportProgress()">💾 Export Progress</button>
+                <button class="btn-secondary" onclick="resetProgress()">🔄 Reset All</button>
+                <button class="btn-success" onclick="printChecklist()">🖨️ Print Checklist</button>
+            </div>
+
+            <!-- Filter Controls -->
+            <div class="filter-controls">
+                <label><input type="checkbox" id="filterImages" onchange="filterFiles()" checked> Images</label>
+                <label><input type="checkbox" id="filterVideos" onchange="filterFiles()" checked> Videos</label>
+                <label><input type="checkbox" id="filterPDFs" onchange="filterFiles()" checked> PDFs</label>
+                <label><input type="checkbox" id="filterOther" onchange="filterFiles()" checked> Other</label>
+            </div>
+
+            <!-- Files Table -->
+            <table class="files-table" id="filesTable">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">✓</th>
+                        <th>File Name</th>
+                        <th style="width: 100px;">Type</th>
+                        <th style="width: 120px;">Status</th>
+                        <th style="width: 150px;">Notes</th>
+                    </tr>
+                </thead>
+                <tbody id="filesList">
+                </tbody>
+            </table>
+
+            <!-- Summary -->
+            <div class="summary">
+                <h3>✅ Backup Complete Checklist</h3>
+                <p>Use this to track your backup progress:</p>
+                <ul id="summaryList" style="margin-top: 10px; margin-left: 20px;"></ul>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Last Updated: <span id="lastUpdate">Never</span> | Storage: 375 MB used of 50.0 GB</p>
+            <p>💡 Tip: Save this page as a bookmark to track your downloads over time</p>
+        </div>
+    </div>
+
+    <script>
+        // File list from your Wix Site Files
+        const files = [
+            { name: "Screenshot 2026-05-09 a...", type: "image", size: "~500KB" },
+            { name: "Screenshot 2024-03-26 a...", type: "image", size: "~600KB" },
+            { name: "IMG_0800.MOV", type: "video", size: "~50MB" },
+            { name: "FTFW Flyer.pdf", type: "pdf", size: "~2MB" },
+            { name: "Screenshot 2024-03-26 a...", type: "image", size: "~600KB" },
+            { name: "Screenshot 2024-03-26 a...", type: "image", size: "~600KB" },
+            { name: "Screenshot 2024-03-26 a...", type: "image", size: "~600KB" },
+            { name: "Screenshot 2024-03-26 a...", type: "image", size: "~600KB" },
+            { name: "Screenshot 2024-03-26 a...", type: "image", size: "~600KB" },
+            { name: "ZR 8-2023 Resume.pdf", type: "pdf", size: "~1.5MB" },
+            { name: "Screenshot 2023-03-09 a...", type: "image", size: "~600KB" },
+            { name: "WhatsApp Image 2023-0...", type: "image", size: "~800KB" },
+            { name: "WhatsApp Image 2023-0...", type: "image", size: "~800KB" },
+            { name: "instapet.png", type: "image", size: "~1.2MB" },
+            { name: "2023-03-09 12.05.39.jpg", type: "image", size: "~2MB" },
+            { name: "Screen Shot 2022-05-10 ...", type: "image", size: "~800KB" }
+        ];
+
+        // Initialize
+        let downloadedFiles = JSON.parse(localStorage.getItem('wixDownloads')) || {};
+
+        function initializeUI() {
+            renderFileList();
+            updateStats();
+        }
+
+        function renderFileList() {
+            const tbody = document.getElementById('filesList');
+            tbody.innerHTML = '';
+
+            files.forEach((file, index) => {
+                const isDownloaded = downloadedFiles[file.name] || false;
+                const row = document.createElement('tr');
+                row.id = `file-${index}`;
+                row.innerHTML = `
+                    <td>
+                        <input type="checkbox" class="file-checkbox"
+                            ${isDownloaded ? 'checked' : ''}
+                            onchange="toggleFile('${file.name}', this.checked)">
+                    </td>
+                    <td class="file-name">${file.name}</td>
+                    <td>
+                        <span class="file-type type-${file.type}">${file.type.toUpperCase()}</span>
+                    </td>
+                    <td>
+                        <span class="status-badge ${isDownloaded ? 'status-completed' : 'status-pending'}">
+                            ${isDownloaded ? '✓ Downloaded' : '⏳ Pending'}
+                        </span>
+                    </td>
+                    <td>
+                        <input type="text" placeholder="Add notes..."
+                            value="${downloadedFiles[file.name + '_notes'] || ''}"
+                            onchange="updateNotes('${file.name}', this.value)"
+                            style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function toggleFile(fileName, isChecked) {
+            downloadedFiles[fileName] = isChecked;
+            localStorage.setItem('wixDownloads', JSON.stringify(downloadedFiles));
+            updateStats();
+            renderFileList();
+        }
+
+        function updateNotes(fileName, notes) {
+            downloadedFiles[fileName + '_notes'] = notes;
+            localStorage.setItem('wixDownloads', JSON.stringify(downloadedFiles));
+        }
+
+        function updateStats() {
+            const total = files.length;
+            const completed = Object.values(downloadedFiles).filter(v => v === true).length;
+            const pending = total - completed;
+            const percent = Math.round((completed / total) * 100);
+
+            document.getElementById('totalFiles').textContent = total;
+            document.getElementById('completedFiles').textContent = completed;
+            document.getElementById('pendingFiles').textContent = pending;
+            document.getElementById('progressPercent').textContent = percent + '%';
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressFill').textContent = percent > 10 ? percent + '%' : '';
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleString();
+        }
+
+        function filterFiles() {
+            const showImages = document.getElementById('filterImages').checked;
+            const showVideos = document.getElementById('filterVideos').checked;
+            const showPDFs = document.getElementById('filterPDFs').checked;
+            const showOther = document.getElementById('filterOther').checked;
+
+            files.forEach((file, index) => {
+                const row = document.getElementById(`file-${index}`);
+                let show = false;
+
+                if (file.type === 'image' && showImages) show = true;
+                if (file.type === 'video' && showVideos) show = true;
+                if (file.type === 'pdf' && showPDFs) show = true;
+                if (file.type === 'other' && showOther) show = true;
+
+                row.style.display = show ? '' : 'none';
+            });
+        }
+
+        function downloadAllLinks() {
+            const links = files.map((f, i) => `${i+1}. ${f.name} (${f.type.toUpperCase()}) - ${f.size}`).join('\n');
+            const blob = new Blob([links], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'wix-files-list.txt';
+            a.click();
+        }
+
+        function exportProgress() {
+            const progress = {
+                timestamp: new Date().toISOString(),
+                totalFiles: files.length,
+                completedFiles: Object.values(downloadedFiles).filter(v => v === true).length,
+                files: files.map(f => ({
+                    name: f.name,
+                    downloaded: downloadedFiles[f.name] || false,
+                    notes: downloadedFiles[f.name + '_notes'] || ''
+                }))
+            };
+
+            const blob = new Blob([JSON.stringify(progress, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `wix-download-progress-${Date.now()}.json`;
+            a.click();
+        }
+
+        function resetProgress() {
+            if (confirm('Are you sure you want to reset all progress? This cannot be undone.')) {
+                downloadedFiles = {};
+                localStorage.removeItem('wixDownloads');
+                initializeUI();
+            }
+        }
+
+        function printChecklist() {
+            window.print();
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', initializeUI);
+    </script>
+</body>
+</html>
