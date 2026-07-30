@@ -5,11 +5,12 @@
  */
 
 // ---------------------------------------------------------------- world axis
-// The site is one continuous vertical column. `t` (0..1) is journey progress:
-// t=0 is the abyssal sea floor, t=1 is low earth orbit.
+// ABYSS REALM CONFIG. The abyss is a vertical column of water: `t` (0..1) runs
+// from the sea floor to just above the waterline, so *departing* this realm
+// always breaches the surface. Orbit is its own realm now.
 export const AXIS = {
   bottom: -80,
-  top: 300,
+  top: 125,
   surface: 100, // world-Y of the sea surface
 };
 
@@ -65,23 +66,17 @@ export const FOG = [
   [-110, 0.034],
   [-30, 0.024],
   [50, 0.016],
-  [100, 0.012],
-  [130, 0.007],
-  [180, 0.003],
-  [230, 0.0006],
-  [320, 0.0],
+  [100, 0.011],
+  [130, 0.006],
 ];
 
 /** Named zones, keyed by the journey progress at which they begin. */
 export const ZONES = [
   { at: 0.0, name: 'Abyssal Zone', code: 'HADAL' },
-  { at: 0.14, name: 'Midnight Zone', code: 'BATHYAL' },
-  { at: 0.27, name: 'Twilight Zone', code: 'MESOPELAGIC' },
-  { at: 0.375, name: 'Sunlit Zone', code: 'EPIPELAGIC' },
+  { at: 0.17, name: 'Midnight Zone', code: 'BATHYAL' },
+  { at: 0.36, name: 'Twilight Zone', code: 'MESOPELAGIC' },
+  { at: 0.6, name: 'Sunlit Zone', code: 'EPIPELAGIC' },
   { at: surfaceT, name: 'Surface', code: 'AIR/WATER' },
-  { at: 0.58, name: 'Troposphere', code: 'ATMOS-01' },
-  { at: 0.72, name: 'Mesosphere', code: 'ATMOS-03' },
-  { at: 0.85, name: 'Low Earth Orbit', code: 'LEO' },
 ];
 
 export const zoneAt = (t) => {
@@ -94,21 +89,18 @@ export const zoneAt = (t) => {
 // looking up through the surface, then down at the planet from orbit.
 export const PITCH = [
   [0.0, -0.155],
-  [0.09, -0.05],
-  [0.2, 0.02],
-  [0.42, 0.18],
-  [surfaceT, 0.24],
-  [0.6, 0.04],
-  [0.78, -0.1],
-  [1.0, -0.34],
+  [0.12, -0.05],
+  [0.3, 0.03],
+  [0.62, 0.16],
+  [surfaceT, 0.3],
+  [1.0, 0.4],
 ];
 
 // ------------------------------------------------------------------ readouts
-/** Flavor altimeter: -3800 m at the floor, 0 at the surface, 420 km in orbit. */
+/** Flavour altimeter: -3800 m at the floor, 0 at the surface, a little air above. */
 export function altitudeAt(t) {
   if (t < surfaceT) return -3800 * (1 - t / surfaceT);
-  const u = (t - surfaceT) / (1 - surfaceT);
-  return 420000 * Math.pow(u, 2.6);
+  return 45 * ((t - surfaceT) / (1 - surfaceT));
 }
 
 export function formatAltitude(m) {
@@ -140,11 +132,14 @@ export const pitchAt = (t) =>
 
 // ----------------------------------------------------------------- glsl bits
 /**
- * Injectable GLSL that reproduces GRADIENT as `columnColor(float y)`.
+ * Injectable GLSL that bakes a [position, hex] ramp into a GLSL function.
  * Unrolled into a smoothstep chain so it stays GLSL ES 1.00 compatible
  * (no dynamically indexed const arrays).
+ *
+ * @param {[number,string][]} ramp
+ * @param {string} fn  name of the generated function
  */
-export function gradientGLSL() {
+export function rampGLSL(ramp, fn = 'columnColor') {
   const lin = (v) => Math.pow(v, 2.2).toFixed(5);
   const vec = (hex) => {
     const c = hex.replace('#', '');
@@ -152,18 +147,31 @@ export function gradientGLSL() {
     return `vec3(${p(0)}, ${p(2)}, ${p(4)})`;
   };
 
-  let body = `  vec3 c = ${vec(GRADIENT[0][1])};\n`;
-  for (let i = 0; i < GRADIENT.length - 1; i++) {
-    const [y0] = GRADIENT[i];
-    const [y1, hex1] = GRADIENT[i + 1];
+  let body = `  vec3 c = ${vec(ramp[0][1])};\n`;
+  for (let i = 0; i < ramp.length - 1; i++) {
+    const [y0] = ramp[i];
+    const [y1, hex1] = ramp[i + 1];
     body += `  c = mix(c, ${vec(hex1)}, smoothstep(${y0.toFixed(1)}, ${y1.toFixed(1)}, y));\n`;
   }
-
-  return /* glsl */ `
-    vec3 columnColor(float y) {
+  return `
+    vec3 ${fn}(float y) {
     ${body}  return c;
     }
   `;
+}
+
+/** The abyss column's ramp, as `columnColor(float y)`. */
+export function gradientGLSL() {
+  return rampGLSL(GRADIENT, 'columnColor');
+}
+
+/** Linear interpolation helper for JS-side ramp sampling of colours. */
+export function rampColor(ramp, x, c0, c1) {
+  return sampleRamp(ramp, x, (a, b, k) => {
+    c0.set(a);
+    c1.set(b);
+    return c0.lerp(c1, k).getHex();
+  });
 }
 
 export const NOISE_GLSL = /* glsl */ `

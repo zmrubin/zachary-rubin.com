@@ -130,4 +130,13 @@ export class Realm {
   get axisEnds() {
     return ['Start', 'End'];
   }
+
+  /**
+   * Post-processing profile for this realm, applied on enter.
+   * A light room needs almost no bloom — the same settings that make emissives
+   * glow in a dark realm turn a paper-white scene into a flat white rectangle.
+   */
+  get post() {
+    return { bloom: 0.34, radius: 0.5, threshold: 0.9, exposure: 0.98 };
+  }
 }

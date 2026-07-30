@@ -2,34 +2,27 @@ import * as THREE from 'three';
 import {
   AXIS,
   BACKDROP_LEAN,
-  GRADIENT,
   NOISE_GLSL,
   WATERLINE_WIDTH,
-  fogDensityAt,
   gradientGLSL,
-  sampleRamp,
 } from '../core/theme.js';
 
 /**
- * Environment — everything that isn't content: the vertical color column, the
- * sea surface with its caustics, god rays below it, a cloud deck above it, and
- * the planet you see once you reach orbit.
+ * Environment — the abyss realm's water: the vertical colour column, the sea
+ * floor, the surface with its caustics, and the god rays beneath it.
+ *
+ * `host` is the owning realm, which supplies `camera`, `t` and `world`.
  */
 export class Environment {
-  constructor(rail) {
-    this.rail = rail;
+  constructor(host) {
+    this.host = host;
     this.object3D = new THREE.Group();
 
     this._buildColumn();
     this._buildFloor();
     this._buildSurface();
     this._buildShafts();
-    this._buildCloudDeck();
-    this._buildPlanet();
 
-    // Reused for the JS-side fog color lookup.
-    this._c0 = new THREE.Color();
-    this._c1 = new THREE.Color();
   }
 
   // -------------------------------------------------- the sky/water backdrop
@@ -289,168 +282,17 @@ export class Environment {
     this.object3D.add(this.shafts);
   }
 
-  // ----------------------------------------------------------- cloud deck
-  _buildCloudDeck() {
-    this.clouds = new THREE.Group();
-    const mat = new THREE.ShaderMaterial({
-      transparent: true,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      fog: false,
-      uniforms: { uTime: { value: 0 }, uSeed: { value: 0 }, uOpacity: { value: 1 } },
-      vertexShader: /* glsl */ `
-        varying vec2 vP;
-        varying vec3 vWorld;
-        void main(){
-          vP = position.xy;
-          vec4 wp = modelMatrix * vec4(position, 1.0);
-          vWorld = wp.xyz;
-          gl_Position = projectionMatrix * viewMatrix * wp;
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        uniform float uTime;
-        uniform float uSeed;
-        uniform float uOpacity;
-        varying vec2 vP;
-        varying vec3 vWorld;
-        ${NOISE_GLSL}
-        void main(){
-          float vDist = length(vWorld - cameraPosition);
 
-          float n = fbm(vP * 0.012 + vec2(uSeed, uTime * 0.008));
-          float a = smoothstep(0.48, 0.78, n) * 0.5 * uOpacity;
-          a *= 1.0 - smoothstep(40.0, 340.0, vDist);
-          if (a < 0.003) discard;
-          gl_FragColor = vec4(vec3(0.78, 0.88, 0.98) * 0.9, a);
-        }
-      `,
-    });
-
-    [136, 154, 176].forEach((y, i) => {
-      const m = mat.clone();
-      m.uniforms.uSeed.value = i * 13.7;
-      const p = new THREE.Mesh(new THREE.PlaneGeometry(900, 900, 16, 16), m);
-      p.rotation.x = -Math.PI / 2;
-      p.position.y = y;
-      this.clouds.add(p);
-    });
-    this.object3D.add(this.clouds);
-  }
-
-  // --------------------------------------------------------------- planet
-  _buildPlanet() {
-    this.planet = new THREE.Group();
-    this.planet.visible = false;
-
-    const R = 2600;
-    const center = AXIS.surface - R;
-
-    const globe = new THREE.Mesh(
-      new THREE.SphereGeometry(R, 96, 64),
-      new THREE.ShaderMaterial({
-        fog: false,
-        transparent: true,
-        uniforms: { uTime: { value: 0 }, uOpacity: { value: 0 } },
-        vertexShader: /* glsl */ `
-          varying vec3 vN;
-          varying vec3 vPos;
-          void main(){
-            vN = normalize(mat3(modelMatrix) * normal);
-            vec4 wp = modelMatrix * vec4(position, 1.0);
-            vPos = wp.xyz;
-            gl_Position = projectionMatrix * viewMatrix * wp;
-          }
-        `,
-        fragmentShader: /* glsl */ `
-          uniform float uTime;
-          uniform float uOpacity;
-          varying vec3 vN;
-          varying vec3 vPos;
-          ${NOISE_GLSL}
-          void main(){
-            vec3 sun = normalize(vec3(0.55, 0.42, -0.72));
-            float lam = max(dot(vN, sun), 0.0);
-
-            // Procedural ocean + cloud swirl, in planet-surface coordinates.
-            vec2 sp = vPos.xz * 0.0016;
-            float land  = smoothstep(0.56, 0.72, fbm(sp * 1.7 + 4.0));
-            float cloud = smoothstep(0.5, 0.86, fbm(sp * 3.1 - vec2(uTime * 0.004, 0.0)));
-
-            vec3 ocean = vec3(0.02, 0.10, 0.26);
-            vec3 earth = vec3(0.10, 0.14, 0.11);
-            vec3 col = mix(ocean, earth, land);
-            col = mix(col, vec3(0.86, 0.92, 0.98), cloud * 0.7);
-            col *= 0.05 + lam * 1.25;
-
-            // Night side keeps a faint city-light shimmer.
-            col += vec3(0.9, 0.62, 0.32) * (1.0 - lam) * land *
-                   smoothstep(0.72, 0.95, fbm(sp * 9.0)) * 0.14;
-
-            // Atmospheric rim on the terminator.
-            vec3 v = normalize(cameraPosition - vPos);
-            float fres = pow(1.0 - max(dot(vN, v), 0.0), 3.0);
-            col += vec3(0.24, 0.5, 1.0) * fres * (0.25 + lam * 0.9);
-
-            gl_FragColor = vec4(col, uOpacity);
-          }
-        `,
-      })
-    );
-    globe.position.y = center;
-    this.planet.add(globe);
-    this.globeMat = globe.material;
-
-    const halo = new THREE.Mesh(
-      new THREE.SphereGeometry(R * 1.02, 96, 48),
-      new THREE.ShaderMaterial({
-        fog: false,
-        transparent: true,
-        side: THREE.BackSide,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        uniforms: { uOpacity: { value: 0 } },
-        vertexShader: /* glsl */ `
-          varying vec3 vN;
-          varying vec3 vPos;
-          void main(){
-            vN = normalize(mat3(modelMatrix) * normal);
-            vec4 wp = modelMatrix * vec4(position, 1.0);
-            vPos = wp.xyz;
-            gl_Position = projectionMatrix * viewMatrix * wp;
-          }
-        `,
-        fragmentShader: /* glsl */ `
-          uniform float uOpacity;
-          varying vec3 vN;
-          varying vec3 vPos;
-          void main(){
-            vec3 v = normalize(cameraPosition - vPos);
-            float f = pow(max(dot(-vN, v), 0.0), 2.4);
-            vec3 sun = normalize(vec3(0.55, 0.42, -0.72));
-            float lam = max(dot(-vN, sun), 0.0);
-            float a = f * (0.14 + lam * 0.7) * uOpacity;
-            gl_FragColor = vec4(vec3(0.3, 0.6, 1.0) * a * 1.6, a);
-          }
-        `,
-      })
-    );
-    halo.position.y = center;
-    this.planet.add(halo);
-    this.haloMat = halo.material;
-
-    this.object3D.add(this.planet);
-  }
 
   // ---------------------------------------------------------------- frame
   update(dt, elapsed) {
-    const t = this.rail.t;
-    const camY = this.rail.camera.position.y;
+    const t = this.host.t;
+    const camY = this.host.camera.position.y;
 
     this.column.material.uniforms.uTime.value = elapsed;
     this.column.material.uniforms.uCamY.value = camY;
     // Locked to the camera: the backdrop has no parallax of its own.
-    this.column.position.copy(this.rail.camera.position);
+    this.column.position.copy(this.host.camera.position);
 
     this.surface.material.uniforms.uTime.value = elapsed;
     this.surface.material.uniforms.uCamY.value = camY - AXIS.surface;
@@ -466,36 +308,7 @@ export class Environment {
     this.shafts.material.uniforms.uOpacity.value = shaftFade;
     this.shafts.visible = shaftFade > 0.01;
 
-    // Cloud deck only matters while crossing the atmosphere.
-    const cloudFade = THREE.MathUtils.smoothstep(t, 0.46, 0.56) * (1 - THREE.MathUtils.smoothstep(t, 0.78, 0.9));
-    this.clouds.visible = cloudFade > 0.01;
-    if (this.clouds.visible) {
-      for (const p of this.clouds.children) {
-        p.material.uniforms.uTime.value = elapsed;
-        p.material.uniforms.uOpacity.value = cloudFade;
-      }
-    }
 
-    // Planet fades in on the way to orbit.
-    const planetFade = THREE.MathUtils.smoothstep(t, 0.66, 0.9);
-    this.planet.visible = planetFade > 0.01;
-    if (this.planet.visible) {
-      this.globeMat.uniforms.uOpacity.value = planetFade;
-      this.globeMat.uniforms.uTime.value = elapsed;
-      this.haloMat.uniforms.uOpacity.value = planetFade;
-    }
 
-    // Fog tracks the same vertical ramp as the backdrop.
-    const fog = this.rail.world.scene.fog;
-    fog.density = fogDensityAt(camY);
-    fog.color.set(this._sampleGradient(camY));
-  }
-
-  _sampleGradient(y) {
-    return sampleRamp(GRADIENT, y, (a, b, k) => {
-      this._c0.set(a);
-      this._c1.set(b);
-      return this._c0.lerp(this._c1, k).getHex();
-    });
   }
 }

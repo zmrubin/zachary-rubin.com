@@ -13,8 +13,8 @@ export class Particulate {
   /**
    * @param {'snow'|'bubbles'|'dust'} kind
    */
-  constructor(rail, kind = 'snow', count = 2600) {
-    this.rail = rail;
+  constructor(host, kind = 'snow', count = 2600) {
+    this.host = host;
     this.kind = kind;
 
     const cfg = {
@@ -138,14 +138,14 @@ export class Particulate {
   }
 
   update(dt, elapsed) {
-    const camY = this.rail.camera.position.y;
+    const camY = this.host.camera.position.y;
     const u = this.mat.uniforms;
     u.uTime.value = elapsed;
     u.uCamY.value = camY;
 
     // Keep the field centred on the camera horizontally too.
-    this.points.position.x = this.rail.camera.position.x;
-    this.points.position.z = this.rail.camera.position.z;
+    this.points.position.x = this.host.camera.position.x;
+    this.points.position.z = this.host.camera.position.z;
 
     // Each kind only exists where it makes sense.
     let vis = 1;

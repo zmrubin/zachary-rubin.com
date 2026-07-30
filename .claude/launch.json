@@ -4,7 +4,7 @@
     {
       "name": "homepage2.0",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "5180", "--directory", "homepage2.0"],
+      "runtimeArgs": ["homepage2.0/devserver.py", "5180", "homepage2.0"],
       "port": 5180
     }
   ]

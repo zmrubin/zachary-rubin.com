@@ -1,51 +1,59 @@
 import * as THREE from 'three';
-import { NOISE_GLSL, PALETTE, journeyY, pitchAt, thetaAt } from '../core/theme.js';
-import { Rail } from '../core/Rail.js';
+import { NOISE_GLSL } from '../core/theme.js';
 
 const CARD_H = 5.4;
 
 /**
- * Nodes — one holographic beacon per section. Placement is derived entirely from
- * the section's `at` / `radius` / `dy`, so adding a section to content/sections.js
- * is all it takes to get a new node in the right place, aimed at the camera.
+ * Nodes — the content beacons for one realm.
+ *
+ * Placement comes entirely from the realm (`Realm.nodeTransform`), so each theme
+ * decides whether stations hang on a vertical column, line a corridor, or orbit a
+ * turntable, while the card, bezel, frame, motif and picking behaviour stay shared.
+ *
+ * Two kinds of station:
+ *   full        the section's home realm — photo, label, opens the dossier
+ *   cross-link  a section homed elsewhere that also belongs here. Rendered as a
+ *               smaller schematic marker; activating it jumps to the home realm.
  */
 export class Nodes {
-  constructor(rail, sections, loader) {
-    this.rail = rail;
-    this.sections = sections;
+  /**
+   * @param {import('../core/Realm.js').Realm} realm
+   * @param {{section: object, at: number, crossLink: boolean}[]} stations
+   * @param {THREE.TextureLoader} loader
+   */
+  constructor(realm, stations, loader) {
+    this.realm = realm;
+    this.stations = stations;
     this.object3D = new THREE.Group();
     this.items = [];
+    this.light = realm.meta.scheme === 'light';
 
-    for (const s of sections) this.items.push(this._build(s, loader));
+    stations.forEach((st, i) => this.items.push(this._build(st, i, loader)));
 
     this.raycaster = new THREE.Raycaster();
     this.hovered = null;
   }
 
   // ------------------------------------------------------------------ build
-  _build(section, loader) {
+  _build(station, index, loader) {
+    const { section, at, crossLink } = station;
     const group = new THREE.Group();
-    const theta = thetaAt(section.at);
-    const radius = section.radius ?? 19;
-    const camY = journeyY(section.at);
 
-    // Sit on the camera's actual sight line, not just at its altitude: the
-    // scripted pitch (looking up through the surface, down at the planet from
-    // orbit) would otherwise shove nodes clean out of frame.
-    const y = camY + Math.tan(pitchAt(section.at)) * radius + (section.dy ?? 0);
+    const tf = this.realm.nodeTransform(section, index, at, crossLink);
+    group.position.copy(tf.position);
+    group.lookAt(tf.faces);
+    const baseScale = (tf.scale ?? 1) * (crossLink ? 0.62 : 1);
+    group.scale.setScalar(baseScale);
 
-    group.position.set(Math.cos(theta) * radius, y, Math.sin(theta) * radius);
-
-    // Aim the card at where the camera will be when this node is centred.
-    const camAt = Rail.cameraPositionAt(section.at);
-    group.lookAt(camAt.x, camY, camAt.z);
-
-    const aspect = section.aspect ?? 1.5;
+    const aspect = crossLink ? 1.3 : section.aspect ?? 1.5;
     const w = CARD_H * aspect;
     const h = CARD_H;
 
-    // ---- the card itself
-    const texture = section.image ? loader.load(section.image) : null;
+    const accent = this.realm.accent;
+    const scheme = this.light ? 1 : 0;
+
+    // ---- card
+    const texture = !crossLink && section.image ? loader.load(section.image) : null;
     if (texture) {
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.anisotropy = 4;
@@ -62,9 +70,11 @@ export class Nodes {
         uTime: { value: 0 },
         uFocus: { value: 0 },
         uHover: { value: 0 },
-        uAccent: { value: new THREE.Color(PALETTE.accent) },
+        uAccent: { value: accent },
         uAspect: { value: aspect },
         uReveal: { value: 0 },
+        uScheme: { value: scheme },
+        uCross: { value: crossLink ? 1 : 0 },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -79,12 +89,11 @@ export class Nodes {
       `,
       fragmentShader: /* glsl */ `
         uniform sampler2D uMap;
-        uniform float uHasMap, uTime, uFocus, uHover, uAspect, uReveal;
+        uniform float uHasMap, uTime, uFocus, uHover, uAspect, uReveal, uScheme, uCross;
         uniform vec3 uAccent;
         varying vec2 vUv;
         ${NOISE_GLSL}
 
-        // Signed distance to a rounded rectangle, in aspect-corrected space.
         float roundedBox(vec2 p, vec2 b, float r){
           vec2 q = abs(p) - b + r;
           return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
@@ -104,17 +113,17 @@ export class Nodes {
           if (uHasMap > 0.5) {
             vec3 img = texture2D(uMap, uv).rgb;
             float lum = dot(img, vec3(0.2126, 0.7152, 0.0722));
-            // Unfocused: a cyan-graded ghost. Focused: the real photograph.
+            // Unfocused: a graded ghost. Focused: the real photograph.
             vec3 ghost = mix(uAccent * lum * 0.85, vec3(lum), 0.35);
             col = mix(ghost, img, smoothstep(0.15, 0.95, uFocus));
             // Push saturation back up as it focuses; the global grade cools
-            // shadows, which would otherwise leave every photo cyan.
+            // shadows, which would otherwise leave every photo tinted.
             float cl = dot(col, vec3(0.2126, 0.7152, 0.0722));
             col = mix(vec3(cl), col, 1.0 + uFocus * 0.35);
             col *= 0.6 + uFocus * 0.6;
             alpha = 0.5 + uFocus * 0.48;
           } else {
-            // No-image card: procedural instrument face.
+            // Procedural instrument face.
             float grid = max(
               smoothstep(0.965, 1.0, fract(uv.x * 22.0)),
               smoothstep(0.965, 1.0, fract(uv.y * 14.0))
@@ -126,31 +135,38 @@ export class Nodes {
             alpha = (0.22 + uFocus * 0.34) * (0.3 + grid * 0.45 + rings * 0.6 + n * 0.28);
           }
 
-          // Horizontal refresh sweep travelling up the card.
+          // Cross-links read as a schematic stand-in, never a photo.
+          if (uCross > 0.5) {
+            float diag = step(0.5, fract((uv.x * uAspect + uv.y) * 9.0));
+            col = uAccent * (0.16 + diag * 0.18);
+            alpha = (0.2 + uFocus * 0.3) * (0.45 + diag * 0.4);
+          }
+
+          // Refresh sweep travelling up the card.
           float sweepY = fract(uTime * 0.16);
           float sweep = exp(-pow((uv.y - sweepY) * 26.0, 2.0));
           col += uAccent * sweep * 0.3;
 
-          // Scanlines + a touch of signal noise.
           col *= 1.0 - 0.10 * (sin(uv.y * 300.0 - uTime * 3.0) * 0.5 + 0.5);
           col += (hash21(uv * 220.0 + fract(uTime) * 61.0) - 0.5) * 0.045;
 
-          // Inner edge glow.
           float rim = smoothstep(0.0, -0.022, d) * (1.0 - smoothstep(-0.022, -0.07, d));
           col += uAccent * rim * (0.22 + uHover * 0.5) * (0.5 + uFocus * 0.5);
           alpha = max(alpha, rim * 0.5);
 
-          // Build-in wipe when the node first comes into range.
-          alpha *= smoothstep(0.0, 0.55, uReveal + uv.y * 0.45);
+          // In a light realm an imageless card is ink-on-paper, not emission.
+          if (uScheme > 0.5 && uHasMap < 0.5) {
+            col = mix(vec3(0.10, 0.12, 0.14), uAccent * 0.7, 0.35 + rim * 0.5);
+            alpha = min(1.0, alpha * 1.6 + 0.12);
+          }
 
+          alpha *= smoothstep(0.0, 0.55, uReveal + uv.y * 0.45);
           gl_FragColor = vec4(col, alpha);
         }
       `,
     });
 
-    // ---- bezel: a dark plate directly behind the card.
-    // Without it the photograph competes with bright water and reads as a cyan
-    // ghost even at full focus; the plate gives every image its own contrast.
+    // ---- bezel behind the card, so photos have their own contrast
     const bezelMat = new THREE.ShaderMaterial({
       transparent: true,
       side: THREE.DoubleSide,
@@ -159,7 +175,8 @@ export class Nodes {
       uniforms: {
         uFocus: { value: 0 },
         uAspect: { value: aspect },
-        uAccent: { value: new THREE.Color(PALETTE.accent) },
+        uAccent: { value: accent },
+        uScheme: { value: scheme },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -169,7 +186,7 @@ export class Nodes {
         }
       `,
       fragmentShader: /* glsl */ `
-        uniform float uFocus, uAspect;
+        uniform float uFocus, uAspect, uScheme;
         uniform vec3 uAccent;
         varying vec2 vUv;
         float roundedBox(vec2 p, vec2 b, float r){
@@ -181,7 +198,9 @@ export class Nodes {
           float d = roundedBox(p, vec2(uAspect, 1.0) * 0.5 - 0.01, 0.06);
           if (d > 0.0) discard;
           float a = (0.34 + uFocus * 0.5) * (1.0 - smoothstep(-0.09, 0.0, d) * 0.5);
-          vec3 col = vec3(0.004, 0.020, 0.028) + uAccent * 0.012;
+          vec3 col = uScheme > 0.5
+            ? vec3(0.93, 0.92, 0.89) - uAccent * 0.05
+            : vec3(0.004, 0.020, 0.028) + uAccent * 0.012;
           gl_FragColor = vec4(col, a);
         }
       `,
@@ -193,26 +212,25 @@ export class Nodes {
     const card = new THREE.Mesh(new THREE.PlaneGeometry(w, h, 12, 12), cardMat);
     group.add(card);
 
-    // ---- corner brackets
-    const frame = this._frame(w, h);
+    const frame = this._frame(w, h, accent);
     group.add(frame);
 
-    // ---- motif behind the card
-    const motif = this._motif(section.glyph ?? 'ring', w, h);
+    const motif = this._motif(crossLink ? 'link' : section.glyph ?? 'ring', w, h, accent);
     group.add(motif);
 
-    // ---- greebles: small tumbling blocks that orbit the card
+    // ---- greebles: small tumbling debris orbiting the card
     const greebles = new THREE.Group();
     const gMat = new THREE.MeshBasicMaterial({
-      color: PALETTE.accent,
+      color: accent,
       transparent: true,
       opacity: 0.26,
       fog: false,
     });
-    for (let i = 0; i < 7; i++) {
+    const nGreeble = crossLink ? 3 : 7;
+    for (let i = 0; i < nGreeble; i++) {
       const s = 0.07 + Math.random() * 0.16;
       const b = new THREE.Mesh(new THREE.BoxGeometry(s, s, s * (1 + Math.random() * 3)), gMat);
-      const a = (i / 7) * Math.PI * 2;
+      const a = (i / nGreeble) * Math.PI * 2;
       const rr = w * 0.62 + Math.random() * 2.2;
       b.position.set(Math.cos(a) * rr, Math.sin(a) * rr * 0.7, (Math.random() - 0.5) * 1.6);
       b.userData.a = a;
@@ -222,7 +240,6 @@ export class Nodes {
     }
     group.add(greebles);
 
-    // ---- invisible, generous hit target
     const hit = new THREE.Mesh(
       new THREE.PlaneGeometry(w * 1.15, h * 1.15),
       new THREE.MeshBasicMaterial({ visible: false })
@@ -233,6 +250,8 @@ export class Nodes {
 
     return {
       section,
+      at,
+      crossLink,
       group,
       card,
       cardMat,
@@ -245,14 +264,13 @@ export class Nodes {
       focus: 0,
       hover: 0,
       reveal: 0,
-      baseQuat: group.quaternion.clone(),
+      baseScale,
       basePos: group.position.clone(),
       phase: Math.random() * Math.PI * 2,
     };
   }
 
-  /** Four corner brackets, drawn as line segments. */
-  _frame(w, h) {
+  _frame(w, h, accent) {
     const hw = w / 2 + 0.35;
     const hh = h / 2 + 0.35;
     const L = Math.min(w, h) * 0.19;
@@ -268,23 +286,19 @@ export class Nodes {
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    const mat = new THREE.LineBasicMaterial({
-      color: PALETTE.accent,
-      transparent: true,
-      opacity: 0.55,
-      fog: false,
-    });
-    return new THREE.LineSegments(geo, mat);
+    return new THREE.LineSegments(
+      geo,
+      new THREE.LineBasicMaterial({ color: accent, transparent: true, opacity: 0.55, fog: false })
+    );
   }
 
-  /** The decorative motif drawn behind each card. */
-  _motif(kind, w, h) {
+  _motif(kind, w, h, accent) {
     const g = new THREE.Group();
-    const mat = () =>
+    const mat = (o = 0.3) =>
       new THREE.MeshBasicMaterial({
-        color: PALETTE.accent,
+        color: accent,
         transparent: true,
-        opacity: 0.3,
+        opacity: o,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         fog: false,
@@ -294,15 +308,16 @@ export class Nodes {
 
     if (kind === 'sonar') {
       for (let i = 0; i < 4; i++) {
-        const r = R * (0.45 + i * 0.22);
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.022, 6, 96), mat());
-        ring.material.opacity = 0.34 - i * 0.06;
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(R * (0.45 + i * 0.22), 0.022, 6, 96),
+          mat(0.34 - i * 0.06)
+        );
         ring.userData.pulse = i * 0.5;
         g.add(ring);
       }
     } else if (kind === 'grid') {
       const gm = new THREE.LineBasicMaterial({
-        color: PALETTE.accent,
+        color: accent,
         transparent: true,
         opacity: 0.16,
         fog: false,
@@ -318,7 +333,7 @@ export class Nodes {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
       g.add(new THREE.LineSegments(geo, gm));
-    } else if (kind === 'orbit') {
+    } else if (kind === 'orbit' || kind === 'run') {
       for (let i = 0; i < 3; i++) {
         const ring = new THREE.Mesh(new THREE.TorusGeometry(R * (0.7 + i * 0.16), 0.03, 6, 96), mat());
         ring.rotation.x = 0.9 + i * 0.35;
@@ -326,23 +341,28 @@ export class Nodes {
         ring.userData.spin = 0.12 + i * 0.07;
         g.add(ring);
       }
+    } else if (kind === 'link') {
+      // Cross-link: a broken ring, signalling "continues elsewhere".
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(R * 0.8, 0.028, 6, 48, Math.PI * 1.35),
+        mat(0.4)
+      );
+      ring.userData.spin = 0.35;
+      g.add(ring);
     } else {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(R, 0.035, 8, 128), mat());
       ring.userData.spin = 0.1;
       g.add(ring);
-      const inner = new THREE.Mesh(new THREE.TorusGeometry(R * 0.62, 0.018, 6, 96), mat());
-      inner.material.opacity = 0.2;
+      const inner = new THREE.Mesh(new THREE.TorusGeometry(R * 0.62, 0.018, 6, 96), mat(0.2));
       inner.userData.spin = -0.18;
       g.add(inner);
     }
 
     g.position.z = -0.9;
-    g.userData.kind = kind;
     return g;
   }
 
   // --------------------------------------------------------------- picking
-  /** Raycast against hit planes; returns the item under the pointer, if any. */
   pick(pointer, camera) {
     this.raycaster.setFromCamera(pointer, camera);
     const hits = this.raycaster.intersectObjects(
@@ -350,16 +370,15 @@ export class Nodes {
       false
     );
     if (!hits.length) return null;
-    const hit = hits[0].object;
-    return this.items.find((i) => i.hit === hit) ?? null;
+    return this.items.find((i) => i.hit === hits[0].object) ?? null;
   }
 
-  /** The item currently closest to centre of the journey. */
+  /** The station closest to the current position. */
   get active() {
     let best = null;
     let bestD = Infinity;
     for (const it of this.items) {
-      const d = Math.abs(it.section.at - this.rail.t);
+      const d = Math.abs(it.at - this.realm.t);
       if (d < bestD) {
         bestD = d;
         best = it;
@@ -370,26 +389,24 @@ export class Nodes {
 
   // ----------------------------------------------------------------- frame
   update(dt, elapsed) {
-    const t = this.rail.t;
-    const drift = this.rail.world.reducedMotion ? 0 : 1;
+    const t = this.realm.t;
+    const drift = this.realm.reducedMotion ? 0 : 1;
     const k = 1 - Math.exp(-dt * 7);
 
     for (const it of this.items) {
-      const d = Math.abs(it.section.at - t);
+      const d = Math.abs(it.at - t);
 
-      // Focus: 1 when centred, falling off over ~0.06 of the journey.
       const focusTarget = 1 - THREE.MathUtils.smoothstep(d, 0.008, 0.042);
       it.focus += (focusTarget - it.focus) * k;
 
       const hoverTarget = this.hovered === it ? 1 : 0;
       it.hover += (hoverTarget - it.hover) * k;
 
-      // Cull anything well outside the travelling window.
-      const inRange = d < 0.16;
+      const inRange = d < 0.24;
       it.group.visible = inRange;
       if (!inRange) continue;
 
-      it.reveal += ((1 - THREE.MathUtils.smoothstep(d, 0.06, 0.14)) - it.reveal) * k * 0.6;
+      it.reveal += ((1 - THREE.MathUtils.smoothstep(d, 0.08, 0.18)) - it.reveal) * k * 0.6;
 
       const u = it.cardMat.uniforms;
       u.uTime.value = elapsed;
@@ -398,18 +415,14 @@ export class Nodes {
       u.uReveal.value = it.reveal;
       it.bezelMat.uniforms.uFocus.value = it.focus;
 
-      // Idle float + a slight lean toward the viewer on hover.
       const ph = elapsed * 0.4 + it.phase;
       it.group.position.copy(it.basePos);
       it.group.position.y += Math.sin(ph) * 0.42 * drift;
       it.group.position.x += Math.cos(ph * 0.7) * 0.28 * drift;
 
-      const scale = 1 + it.focus * 0.06 + it.hover * 0.05;
-      it.group.scale.setScalar(scale);
-
+      it.group.scale.setScalar(it.baseScale * (1 + it.focus * 0.06 + it.hover * 0.05));
       it.frame.material.opacity = 0.28 + it.focus * 0.42 + it.hover * 0.3;
 
-      // Motif animation.
       for (const child of it.motif.children) {
         if (child.userData.spin) child.rotation.z += child.userData.spin * dt * drift;
         if (child.userData.pulse !== undefined) {
@@ -419,7 +432,6 @@ export class Nodes {
         }
       }
 
-      // Greebles orbit and tumble.
       for (const b of it.greebles.children) {
         const a = b.userData.a + elapsed * 0.13 * b.userData.spin * drift;
         b.position.x = Math.cos(a) * b.userData.rr;

@@ -20,7 +20,7 @@ import { CAM_R, PALETTE, journeyY, thetaAt } from '../core/theme.js';
  *   fade      [inT, outT] — the window over which it fades out
  */
 export class Beacon {
-  constructor(rail, opts = {}) {
+  constructor(host, opts = {}) {
     const {
       at = 0,
       angle = 0.46,
@@ -29,20 +29,30 @@ export class Beacon {
       scale = 0.9,
       lamp = PALETTE.accentWarm,
       fade = [0.03, 0.17],
+      // Realms other than the abyss place it explicitly instead of deriving
+      // the position from the water column's geometry.
+      position = null,
+      faces = null,
+      accent: accentHex = PALETTE.accent,
     } = opts;
 
-    this.rail = rail;
+    this.host = host;
     this.fade = fade;
     this.at = at;
     this.object3D = new THREE.Group();
 
-    const theta = thetaAt(at) + angle;
-    const y = journeyY(at);
-    this.object3D.position.set(Math.cos(theta) * radius, y + dy, Math.sin(theta) * radius);
-    this.object3D.lookAt(Math.cos(thetaAt(at)) * CAM_R, y, Math.sin(thetaAt(at)) * CAM_R);
+    if (position) {
+      this.object3D.position.copy(position);
+      this.object3D.lookAt(faces ?? new THREE.Vector3(0, position.y, 0));
+    } else {
+      const theta = thetaAt(at) + angle;
+      const y = journeyY(at);
+      this.object3D.position.set(Math.cos(theta) * radius, y + dy, Math.sin(theta) * radius);
+      this.object3D.lookAt(Math.cos(thetaAt(at)) * CAM_R, y, Math.sin(thetaAt(at)) * CAM_R);
+    }
     this.object3D.scale.setScalar(scale);
 
-    const accent = new THREE.Color(PALETTE.accent);
+    const accent = new THREE.Color(accentHex);
     const lampColor = new THREE.Color(lamp);
 
     // ---- the lamp
@@ -148,7 +158,11 @@ export class Beacon {
   }
 
   update(dt, elapsed) {
-    const t = this.rail.t;
+    const t = this.host.t;
+    if (!this.fade) {
+      this._apply(1, dt, elapsed);
+      return;
+    }
     const [a, b] = this.fade;
     // Visible in a window around its own position; `fade` is authored so the
     // sea-floor beacon fades out as you leave and the orbital one fades in.
@@ -157,10 +171,14 @@ export class Beacon {
         ? 1 - THREE.MathUtils.smoothstep(t, a, b)
         : THREE.MathUtils.smoothstep(t, b, a);
 
+    this._apply(vis, dt, elapsed);
+  }
+
+  _apply(vis, dt, elapsed) {
     this.object3D.visible = vis > 0.01;
     if (!this.object3D.visible) return;
 
-    const drift = this.rail.world.reducedMotion ? 0 : 1;
+    const drift = this.host.world.reducedMotion ? 0 : 1;
     this.glow.material.uniforms.uTime.value = elapsed;
     this.glow.material.uniforms.uOpacity.value = vis;
 

@@ -11,8 +11,8 @@ import { AXIS, NOISE_GLSL } from '../core/theme.js';
  */
 export class Tethers {
   /** @param {{x:number,z:number,accent?:number}[]} anchors */
-  constructor(rail, anchors) {
-    this.rail = rail;
+  constructor(host, anchors) {
+    this.host = host;
     this.object3D = new THREE.Group();
 
     const height = AXIS.top - AXIS.bottom + 140;
@@ -107,7 +107,7 @@ export class Tethers {
   }
 
   update(dt, elapsed) {
-    const camY = this.rail.camera.position.y;
+    const camY = this.host.camera.position.y;
     for (const m of this.mats) {
       m.uniforms.uTime.value = elapsed;
       m.uniforms.uCamY.value = camY;

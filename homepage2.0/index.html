@@ -43,15 +43,21 @@
           <span>Chart</span>
           <span class="ct-key">M</span>
         </button>
-        <nav id="nav" aria-label="Sections">
+        <nav id="nav" aria-label="Stations">
           <div class="nav-head">
-            <span>Station index</span>
+            <span id="nav-realm">Abyss</span>
             <span id="nav-count"></span>
           </div>
           <div id="nav-list"></div>
         </nav>
       </div>
     </header>
+
+    <!-- realm switcher -->
+    <div id="realms" aria-label="Realms">
+      <div class="realm-head">Realms</div>
+      <div id="realm-list"></div>
+    </div>
 
     <!-- left depth gauge -->
     <div id="gauge" aria-hidden="true">
@@ -61,7 +67,8 @@
         <div id="gauge-marker"></div>
       </div>
       <div class="gauge-readout">
-        <div id="altitude">−3800 m</div>
+        <div id="gauge-axis">Depth</div>
+        <div id="readout">−3800 m</div>
         <div id="zone">Abyssal Zone</div>
         <div id="zone-code">HADAL</div>
       </div>
@@ -97,7 +104,26 @@
       Scroll or drag to ascend
     </div>
 
+    <!-- keep-scrolling-to-leave affordance -->
+    <div id="depart">
+      <span id="depart-label">Depart</span>
+      <span class="depart-track"><span id="depart-fill"></span></span>
+    </div>
+
     <div id="labels"></div>
+  </div>
+
+  <!-- transit banner, shown while changing realms -->
+  <div id="transit" aria-live="polite">
+    <div class="transit-inner">
+      <div class="transit-route">
+        <span id="transit-from">—</span>
+        <span class="transit-arrow"></span>
+        <span id="transit-to">—</span>
+      </div>
+      <div id="transit-blurb"></div>
+      <div class="transit-track"><span id="transit-fill"></span></div>
+    </div>
   </div>
 
   <!-- Sounding chart (jump-to-depth navigator) ------------------------- -->

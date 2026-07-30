@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { AXIS, CAM_R, journeyY, pitchAt, thetaAt } from './theme.js';
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -10,12 +9,12 @@ const easeInOutQuint = (x) =>
 /**
  * Detents — the mapping from raw scroll input (`u`) to journey position (`t`).
  *
- * Without this, `t` is linear in scroll: the camera climbs ~38 world units
+ * Without this, `t` is linear in scroll: the camera can cover tens of world units
  * between adjacent sections while sitting only ~19 units away from them, so a
- * node sweeps from far above frame to far below it in a flick of the wheel and
- * is almost never actually composed.
+ * node sweeps from far above frame to far below it in a flick of the wheel and is
+ * almost never actually composed.
  *
- * The column is split into segments whose boundaries are the section positions.
+ * The realm is split into segments whose boundaries are the section positions.
  * Each segment gets an equal share of scroll, and within a segment the position
  * eases in and out — so travel decelerates into every station and accelerates
  * away from it. Nodes become destinations you settle at, not things you fly past.
@@ -24,7 +23,7 @@ class Detents {
   constructor(stops) {
     const set = new Set([0, ...stops, 1]);
     this.stops = [...set].sort((a, b) => a - b);
-    this.segments = this.stops.length - 1;
+    this.segments = Math.max(1, this.stops.length - 1);
   }
 
   /** raw scroll input -> journey position */
@@ -59,59 +58,118 @@ class Detents {
   }
 }
 
+/** How much overscroll past a realm's end commits to a transition. */
+const DEPART_THRESHOLD = 0.34;
+
 /**
- * Rail — the whole navigation model.
+ * Rail — navigation. Owns exactly one number: `t`, the journey position within
+ * the *active realm*. Wheel, drag, keys, nav rows, chart clicks and deep links
+ * all write to it; the camera critically-damps toward it so movement has mass.
  *
- * `t` (0..1) is where you are on the journey. Wheel, drag, keyboard and
- * programmatic `travelTo()` all write to `target`; the camera critically-damps
- * toward it so movement always feels like mass, never like a jump cut.
+ * Where the camera actually goes for a given `t` is the realm's job
+ * (`Realm.placeCamera`) — this class is realm-agnostic.
  *
- * The camera rides a small circle around the column axis and looks outward, so
- * each section's beacon swings into the center of frame at its own `t`.
+ * Scrolling past either end builds `overscroll` pressure instead of doing
+ * nothing; past a threshold it fires `onDepart(direction)`, which the
+ * RealmManager turns into a transition to the neighbouring realm.
  */
 export class Rail {
-  /** @param {number[]} stops section positions, for the scroll detents */
-  constructor(world, stops = []) {
+  constructor(world) {
     this.world = world;
     this.camera = world.camera;
-    this.detents = new Detents(stops);
 
-    // `u` is raw scroll input, `t` is the journey position everything else
-    // reads. `target` is where the input wants `u` to be.
+    this.realm = null;
+    this.detents = new Detents([]);
+
+    // `u` is raw scroll input, `t` is the journey position everything reads.
     this.u = 0;
     this.t = 0;
     this.target = 0;
     this.velocity = 0;
+
+    // Pressure past a realm boundary, signed. Drives the departure affordance.
+    this.overscroll = 0;
+    this.canDepart = { prev: false, next: false };
+    this.onDepart = null;
+
+    // Locked while a transition owns the camera.
+    this.locked = false;
+
     this.mouse = new THREE.Vector2(0, 0);
     this.mouseSmooth = new THREE.Vector2(0, 0);
     this.dragging = false;
     this.idle = 0;
 
-    this._pos = new THREE.Vector3();
-    this._look = new THREE.Vector3();
+    this._ctx = {
+      mouse: this.mouseSmooth,
+      elapsed: 0,
+      velocity: 0,
+      reducedMotion: world.reducedMotion,
+      t: 0,
+    };
 
     this._bind();
   }
 
+  // ------------------------------------------------------------------ realm
+  /**
+   * Swap the active realm.
+   * @param {import('./Realm.js').Realm} realm
+   * @param {number[]} stops section positions inside it, for the detents
+   * @param {number} entryT where to arrive (0 when entering forwards, 1 backwards)
+   */
+  setRealm(realm, stops, entryT = 0) {
+    this.realm = realm;
+    this.detents = new Detents(stops);
+    this.overscroll = 0;
+    this.u = this.detents.toU(entryT);
+    this.target = this.u;
+    this.t = this.detents.toT(this.u);
+    this.velocity = 0;
+  }
+
   // ------------------------------------------------------------------ input
+  /** Apply a signed scroll delta, routing anything past the ends to overscroll. */
+  _push(delta) {
+    if (this.locked) return;
+    this.idle = 0;
+    const next = this.target + delta;
+
+    if (next > 1) {
+      this.target = 1;
+      this.overscroll = Math.max(0, this.overscroll) + (next - 1);
+    } else if (next < 0) {
+      this.target = 0;
+      this.overscroll = Math.min(0, this.overscroll) + next;
+    } else {
+      this.target = next;
+      // Moving back inside the realm releases the pressure immediately.
+      this.overscroll = 0;
+    }
+
+    if (this.overscroll > DEPART_THRESHOLD && this.canDepart.next) {
+      this.overscroll = 0;
+      this.onDepart?.(1);
+    } else if (this.overscroll < -DEPART_THRESHOLD && this.canDepart.prev) {
+      this.overscroll = 0;
+      this.onDepart?.(-1);
+    }
+  }
+
   _bind() {
     const el = document.body;
 
-    // Wheel / trackpad. Line and page deltas are normalized to pixels first.
     window.addEventListener(
       'wheel',
       (e) => {
         if (e.target.closest?.('[data-scrollable]')) return;
         e.preventDefault();
         const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
-        this.target = clamp(this.target + (e.deltaY * scale) / 9000, 0, 1);
-        this.idle = 0;
+        this._push((e.deltaY * scale) / 9000);
       },
       { passive: false }
     );
 
-    // Pointer drag — vertical drag travels, and a little horizontal drag helps
-    // on touch where vertical is the scroll gesture.
     let last = null;
     el.addEventListener('pointerdown', (e) => {
       if (e.target.closest?.('a, button, [data-ui], #chart, #panel')) return;
@@ -128,8 +186,7 @@ export class Rail {
       const dy = e.clientY - last.y;
       const dx = e.clientX - last.x;
       last = { x: e.clientX, y: e.clientY };
-      this.target = clamp(this.target - (dy * 1.6 + dx * 0.5) / 2400, 0, 1);
-      this.idle = 0;
+      this._push(-(dy * 1.6 + dx * 0.5) / 2400);
     });
     const end = () => {
       this.dragging = false;
@@ -138,13 +195,11 @@ export class Rail {
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', end);
 
-    // Keyboard.
     window.addEventListener('keydown', (e) => {
       const step = { ArrowUp: -0.02, ArrowDown: 0.02, PageUp: -0.12, PageDown: 0.12 }[e.key];
       if (step !== undefined) {
         e.preventDefault();
-        this.target = clamp(this.target + step, 0, 1);
-        this.idle = 0;
+        this._push(step);
       } else if (e.key === 'Home') {
         this.travelTo(0);
       } else if (e.key === 'End') {
@@ -155,78 +210,50 @@ export class Rail {
 
   /** @param {number} t a journey position (not raw input) */
   travelTo(t) {
+    if (this.locked) return;
     this.target = clamp(this.detents.toU(t), 0, 1);
+    this.overscroll = 0;
     this.idle = 0;
   }
 
-  /** Jump with no travel time — used for deep links on first load. */
+  /** Jump with no travel time — deep links, and arriving in a new realm. */
   jumpTo(t) {
-    this.travelTo(t);
+    this.target = clamp(this.detents.toU(t), 0, 1);
     this.u = this.target;
     this.t = this.detents.toT(this.u);
+    this.overscroll = 0;
   }
 
   // ------------------------------------------------------------------ frame
   update(dt, elapsed) {
-    // Critically damped approach; `1 - exp` keeps it frame-rate independent.
     const k = 1 - Math.exp(-dt * 3.4);
     const prev = this.t;
     this.u += (this.target - this.u) * k;
     this.t = this.detents.toT(this.u);
     this.velocity = (this.t - prev) / Math.max(dt, 1e-4);
 
+    // Overscroll bleeds away when you stop pushing.
+    this.overscroll *= Math.exp(-dt * 2.6);
+    if (Math.abs(this.overscroll) < 1e-4) this.overscroll = 0;
+
     this.idle += dt;
 
-    // Mouse parallax, also damped.
     const mk = 1 - Math.exp(-dt * 4.0);
     this.mouseSmooth.x += (this.mouse.x - this.mouseSmooth.x) * mk;
     this.mouseSmooth.y += (this.mouse.y - this.mouseSmooth.y) * mk;
 
-    const drift = this.world.reducedMotion ? 0 : 1;
-    const theta = thetaAt(this.t);
-    const y = journeyY(this.t);
+    const ctx = this._ctx;
+    ctx.elapsed = elapsed;
+    ctx.velocity = this.velocity;
+    ctx.t = this.t;
 
-    // Slow idle breathing so the frame is never dead still.
-    const bob = Math.sin(elapsed * 0.31) * 0.55 * drift;
-    const sway = Math.sin(elapsed * 0.23 + 1.1) * 0.04 * drift;
-
-    this._pos.set(
-      Math.cos(theta + sway) * CAM_R,
-      y + bob,
-      Math.sin(theta + sway) * CAM_R
-    );
-    this.camera.position.copy(this._pos);
-
-    // Look outward from the axis, with scripted pitch plus mouse parallax.
-    const yaw = theta + this.mouseSmooth.x * 0.075;
-    const pitch = pitchAt(this.t) - this.mouseSmooth.y * 0.06;
-    const dist = 60;
-    this._look.set(
-      this._pos.x + Math.cos(yaw) * Math.cos(pitch) * dist,
-      this._pos.y + Math.sin(pitch) * dist,
-      this._pos.z + Math.sin(yaw) * Math.cos(pitch) * dist
-    );
-    this.camera.lookAt(this._look);
-
-    // A whisper of roll, biased by travel speed — reads as inertia.
-    const roll = Math.sin(elapsed * 0.19) * 0.012 * drift - this.velocity * 0.05;
-    this.camera.rotateZ(roll);
-
-    // Field of view opens slightly while travelling fast.
-    const fov = 56 + Math.min(Math.abs(this.velocity) * 26, 5);
-    if (Math.abs(this.camera.fov - fov) > 0.01) {
-      this.camera.fov = fov;
-      this.camera.updateProjectionMatrix();
+    if (this.realm && !this.locked) {
+      this.realm.t = this.t;
+      this.realm.placeCamera(this.camera, this.t, ctx);
     }
   }
 
-  /** World-space position of the camera at an arbitrary `t` (used for aiming nodes). */
-  static cameraPositionAt(t, out = new THREE.Vector3()) {
-    const theta = thetaAt(t);
-    return out.set(Math.cos(theta) * CAM_R, journeyY(t), Math.sin(theta) * CAM_R);
-  }
-
-  static get span() {
-    return AXIS.top - AXIS.bottom;
+  get ctx() {
+    return this._ctx;
   }
 }

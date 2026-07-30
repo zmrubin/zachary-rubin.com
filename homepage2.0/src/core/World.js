@@ -5,6 +5,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GradeShader } from '../shaders/GradeShader.js';
+import { TransitionShader } from '../shaders/TransitionShader.js';
 
 /**
  * World — renderer, camera, post chain and the frame loop.
@@ -46,6 +47,12 @@ export class World {
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.34, 0.5, 0.9);
     this.composer.addPass(this.bloom);
 
+    // Realm changes are covered by a full-screen pass. Sits before the grade so
+    // the whole composite still gets vignette/grain and reads as one image.
+    this.transitionPass = new ShaderPass(TransitionShader);
+    this.transitionPass.enabled = false;
+    this.composer.addPass(this.transitionPass);
+
     this.grade = new ShaderPass(GradeShader);
     this.grade.uniforms.uChroma.value = this.quality === 'high' ? 0.85 : 0.4;
     this.grade.uniforms.uGrain.value = this.reducedMotion ? 0.012 : 0.03;
@@ -57,6 +64,15 @@ export class World {
     this._onResize = this.resize.bind(this);
     window.addEventListener('resize', this._onResize);
     this.resize();
+  }
+
+  /** Apply a realm's post-processing profile. */
+  applyPost(post) {
+    if (!post) return;
+    this.bloom.strength = post.bloom;
+    this.bloom.radius = post.radius;
+    this.bloom.threshold = post.threshold;
+    this.toneMappingExposureTarget = post.exposure;
   }
 
   add(obj) {
@@ -73,6 +89,7 @@ export class World {
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
     this.grade.uniforms.uResolution.value.set(w, h);
+    this.transitionPass.uniforms.uResolution.value.set(w, h);
   }
 
   start() {
@@ -80,6 +97,11 @@ export class World {
       this._raf = requestAnimationFrame(loop);
       const dt = Math.min(this.clock.getDelta(), 1 / 20);
       const elapsed = this.clock.elapsedTime;
+      // Ease exposure between realms so the change reads as an iris, not a cut.
+      if (this.toneMappingExposureTarget !== undefined) {
+        const e = this.renderer.toneMappingExposure;
+        this.renderer.toneMappingExposure = e + (this.toneMappingExposureTarget - e) * Math.min(1, dt * 2.5);
+      }
       this.grade.uniforms.uTime.value = elapsed;
       for (const u of this.updatables) u.update(dt, elapsed);
       this.composer.render();

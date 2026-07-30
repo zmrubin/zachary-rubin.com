@@ -5,12 +5,16 @@
    ========================================================================= */
 
 :root {
+  /* --accent / --accent-warm are rewritten per realm by the HUD. */
   --accent: #3fe0f0;
-  --accent-dim: #1d8496;
-  --warm: #ffb45c;
+  --accent-warm: #ffb45c;
+  --accent-dim: color-mix(in srgb, var(--accent) 55%, #04141a);
+  --warm: var(--accent-warm);
   --ink: #dff6fb;
   --ink-dim: #7d9aa5;
   --ink-faint: #3f5b64;
+  --scrim: 1, 11, 15;
+  --panel: 3, 20, 26;
 
   --font-display: 'Helvetica Neue', 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
@@ -18,6 +22,24 @@
   --edge: clamp(18px, 3.2vw, 46px);
   --hud-blur: saturate(140%) blur(2px);
 }
+
+/* The Atelier is a light room. Flipping these tokens retunes the entire
+   instrument panel without a second stylesheet. */
+:root[data-scheme='light'] {
+  --ink: #16232a;
+  --ink-dim: #4a5b64;
+  --ink-faint: #8a99a1;
+  --scrim: 244, 242, 236;
+  --panel: 250, 249, 245;
+}
+:root[data-scheme='light'] body,
+:root[data-scheme='light'] #boot { background: #e9e6dd; }
+:root[data-scheme='light'] .hero-title span:last-child {
+  -webkit-text-stroke-color: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+:root[data-scheme='light'] .label-title,
+:root[data-scheme='light'] #readout,
+:root[data-scheme='light'] #telemetry { text-shadow: 0 1px 12px rgba(255, 255, 255, .85); }
 
 * { box-sizing: border-box; }
 
@@ -88,6 +110,8 @@ body.is-ready #boot { opacity: 0; visibility: hidden; }
   pointer-events: none;
 }
 #hud button, #hud a { pointer-events: auto; }
+/* A realm change should read as one move, not a dozen independent flickers. */
+#hud, #hud * { transition: color .5s ease, border-color .5s ease, background-color .5s ease; }
 
 /* Edge scrim. The scene swings from near-black abyss to a white surface band to
    a sunlit planet, so the chrome needs a floor of contrast that doesn't depend
@@ -98,10 +122,10 @@ body.is-ready #boot { opacity: 0; visibility: hidden; }
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(to right, rgba(1, 11, 15, .5), rgba(1, 11, 15, 0) 20%),
-    linear-gradient(to left, rgba(1, 11, 15, .45), rgba(1, 11, 15, 0) 24%),
-    linear-gradient(to bottom, rgba(1, 11, 15, .42), rgba(1, 11, 15, 0) 14%),
-    linear-gradient(to top, rgba(1, 11, 15, .35), rgba(1, 11, 15, 0) 12%);
+    linear-gradient(to right, rgba(var(--scrim), .5), rgba(var(--scrim), 0) 20%),
+    linear-gradient(to left, rgba(var(--scrim), .45), rgba(var(--scrim), 0) 24%),
+    linear-gradient(to bottom, rgba(var(--scrim), .42), rgba(var(--scrim), 0) 14%),
+    linear-gradient(to top, rgba(var(--scrim), .35), rgba(var(--scrim), 0) 12%);
 }
 
 /* ---------------------------------------------------------------- topbar */
@@ -188,7 +212,7 @@ body.is-ready #boot { opacity: 0; visibility: hidden; }
 #nav {
   min-width: 218px;
   border: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
-  background: linear-gradient(180deg, rgba(3, 20, 26, .82), rgba(1, 10, 14, .74));
+  background: linear-gradient(180deg, rgba(var(--panel), .84), rgba(var(--scrim), .76));
   backdrop-filter: blur(6px) saturate(120%);
   clip-path: polygon(0 0, 100% 0, 100% 100%, 12px 100%, 0 calc(100% - 12px));
 }
@@ -253,18 +277,21 @@ body.is-ready #boot { opacity: 0; visibility: hidden; }
    so nothing ever sits at the same height as the hero title or a node label. */
 #gauge {
   position: absolute;
-  left: var(--edge);
+  right: var(--edge);
   top: 50%;
   transform: translateY(-50%);
   display: grid;
-  gap: 16px;
-  width: 118px;
+  gap: 14px;
+  width: 132px;
+  justify-items: end;
 }
 .gauge-rail {
   position: relative;
   width: 26px;
-  height: min(38vh, 300px);
+  height: min(34vh, 280px);
+  transform: scaleX(-1);
 }
+.gauge-rail > * { transform: scaleX(1); }
 #gauge-ticks { position: absolute; inset: 0; }
 .tick {
   position: absolute;
@@ -315,8 +342,15 @@ body.is-ready #boot { opacity: 0; visibility: hidden; }
   transform: scale(1.5);
 }
 
-.gauge-readout { display: grid; gap: 5px; }
-#altitude {
+.gauge-readout { display: grid; gap: 4px; justify-items: end; text-align: right; }
+#gauge-axis {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+#readout {
   font-family: var(--font-mono);
   font-size: 17px;
   text-shadow: 0 1px 12px rgba(0, 14, 20, .95);
@@ -380,7 +414,7 @@ body.is-ready #boot { opacity: 0; visibility: hidden; }
 /* ------------------------------------------------------------------ hero */
 #hero {
   position: absolute;
-  left: calc(var(--edge) + 128px);
+  left: calc(var(--edge) + 186px);
   top: 50%;
   transform: translateY(-50%);
   max-width: min(31ch, 40vw);
@@ -1016,3 +1050,306 @@ body.is-ready #boot { opacity: 0; visibility: hidden; }
   .hint-arrow, .t-dot, .boot-ring { animation: none; }
   * { transition-duration: .01ms !important; }
 }
+
+/* =========================================================== realm switcher */
+#realms {
+  position: absolute;
+  left: var(--edge);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 150px;
+}
+.realm-head {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding-bottom: 7px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  margin-bottom: 5px;
+}
+#realm-list { display: grid; gap: 1px; }
+
+.realm-item {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 5px 7px;
+  display: grid;
+  grid-template-columns: 3px auto 1fr;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink-faint);
+  transition: color .25s, background .25s;
+}
+.realm-item:hover { color: var(--ink); background: rgba(var(--panel), .5); }
+.realm-item.is-active { color: var(--realm-accent); background: rgba(var(--panel), .62); }
+
+.realm-swatch {
+  width: 3px;
+  height: 15px;
+  background: var(--realm-accent);
+  opacity: .3;
+  transition: opacity .3s, height .3s;
+}
+.realm-item:hover .realm-swatch { opacity: .7; }
+.realm-item.is-active .realm-swatch {
+  opacity: 1;
+  height: 21px;
+  box-shadow: 0 0 10px var(--realm-accent);
+}
+.realm-code {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: .16em;
+  opacity: .6;
+}
+.realm-name { font-size: 11.5px; letter-spacing: .01em; }
+
+/* ====================================================== departure affordance */
+#depart {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--edge) + 34px);
+  transform: translate(-50%, 8px);
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s, transform .25s;
+}
+#depart.is-on { opacity: 1; transform: translate(-50%, 0); }
+#depart-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.depart-track {
+  display: block;
+  width: 168px;
+  height: 2px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  overflow: hidden;
+}
+#depart-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+#depart.is-back #depart-fill { transform-origin: right center; }
+
+/* ============================================================ transit banner */
+#transit {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s;
+}
+#transit.is-on { opacity: 1; }
+.transit-inner {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  padding: 26px 40px;
+  text-align: center;
+}
+.transit-route {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: clamp(20px, 3.2vw, 38px);
+  font-weight: 300;
+  letter-spacing: -.02em;
+  color: #fff;
+  text-shadow: 0 2px 30px rgba(0, 0, 0, .7);
+}
+.transit-arrow {
+  width: clamp(38px, 6vw, 84px);
+  height: 1px;
+  background: currentColor;
+  position: relative;
+  opacity: .7;
+}
+.transit-arrow::after {
+  content: '';
+  position: absolute;
+  right: 0; top: -3px;
+  border-left: 7px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+}
+#transit-blurb {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: .28em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .72);
+}
+.transit-track {
+  width: min(320px, 50vw);
+  height: 2px;
+  background: rgba(255, 255, 255, .16);
+  overflow: hidden;
+}
+#transit-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+
+/* ======================================================= chart, realm layout */
+.chart-body {
+  position: relative;
+  margin: clamp(16px, 2vw, 26px) clamp(16px, 2.4vw, 34px);
+  display: grid;
+  grid-template-columns: minmax(230px, 300px) 1fr;
+  gap: clamp(18px, 2.6vw, 40px);
+  min-height: 0;
+}
+
+.chart-realms {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+.chart-realms::-webkit-scrollbar { width: 3px; }
+.chart-realms::-webkit-scrollbar-thumb { background: var(--accent-dim); }
+
+.cr {
+  appearance: none;
+  border: 1px solid transparent;
+  background: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 3px 1fr;
+  gap: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background .25s, border-color .25s;
+}
+.cr:hover, .cr.is-preview {
+  background: color-mix(in srgb, var(--realm-accent) 9%, transparent);
+  border-color: color-mix(in srgb, var(--realm-accent) 26%, transparent);
+}
+.cr-bar { background: var(--realm-accent); opacity: .45; }
+.cr.is-preview .cr-bar { opacity: 1; box-shadow: 0 0 14px var(--realm-accent); }
+.cr-body { display: grid; gap: 3px; padding: 10px 12px 11px 0; }
+.cr-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cr-code {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: .22em;
+  color: var(--realm-accent);
+}
+.cr-here {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--ink) 22%, transparent);
+  padding: 2px 5px;
+}
+.cr-name { font-size: 16px; font-weight: 300; letter-spacing: -.01em; color: var(--ink); }
+.cr-blurb {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+  max-width: 34ch;
+}
+.cr-meta {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+/* the previewed realm's own profile */
+.chart-profile { position: relative; display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+.cp-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--realm-accent) 20%, transparent);
+  margin-bottom: 10px;
+}
+.cp-code {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: .24em;
+  color: var(--realm-accent);
+}
+.cp-name { font-size: 18px; font-weight: 300; }
+.cp-axis {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.cp-plot { position: relative; min-height: 0; }
+.cp-plot .chart-ticks { width: 62px; }
+.cp-plot .chart-plot { left: 74px; --axis-x: 40%; }
+.cp-plot .chart-axis-fill {
+  background: linear-gradient(to top,
+    color-mix(in srgb, var(--realm-accent) 12%, transparent),
+    var(--realm-accent));
+  filter: none;
+  box-shadow: 0 0 22px color-mix(in srgb, var(--realm-accent) 34%, transparent);
+}
+.cp-plot .cs-arm { background: color-mix(in srgb, var(--realm-accent) 34%, transparent); }
+.cp-plot .cs-dot { border-color: var(--realm-accent); }
+.cp-plot .cs-num { color: var(--realm-accent); }
+.cp-plot .cs:hover .cs-arm { background: var(--realm-accent); }
+.cp-plot .cs:hover .cs-dot { background: var(--realm-accent); box-shadow: 0 0 12px var(--realm-accent); }
+
+/* cross-links read as secondary everywhere they appear */
+.cs.is-cross .cs-card { opacity: .72; }
+.cs.is-cross .cs-dot { transform: rotate(45deg) scale(.8); background: transparent; }
+.nav-item.is-cross { opacity: .72; }
+.nav-item.is-cross .nav-label { font-style: italic; }
+.gauge-node.is-cross { border-style: dashed; opacity: .7; }
+.label.is-cross .label-title { font-size: clamp(16px, 1.7vw, 23px); opacity: .9; }
+
+@media (max-width: 1080px) {
+  .chart-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .chart-realms { grid-auto-flow: column; grid-auto-columns: 210px; overflow-x: auto; }
+}
+@media (max-width: 860px) {
+  #realms { display: none; }
+  #depart { bottom: calc(var(--edge) + 96px); }
+}
+
+/* While a realm swap is in flight, station-specific chrome would be showing the
+   outgoing world's captions over the incoming one. */
+/* !important because the HUD writes inline opacity on #hero and the labels
+   every frame, and inline styles otherwise win. */
+body.in-transit #labels,
+body.in-transit #gauge,
+body.in-transit #nav,
+body.in-transit #hint,
+body.in-transit #hero { opacity: 0 !important; transition: opacity .25s; }
+body.in-transit #hud::before { opacity: .35; }

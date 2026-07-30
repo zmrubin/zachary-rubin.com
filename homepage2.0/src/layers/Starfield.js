@@ -6,8 +6,10 @@ import * as THREE from 'three';
  * one with visible color temperature.
  */
 export class Starfield {
-  constructor(rail, count = 3200) {
-    this.rail = rail;
+  constructor(host, count = 3200, opts = {}) {
+    this.host = host;
+    this.always = opts.always ?? false;
+    this.fadeIn = opts.fadeIn ?? [0.6, 0.86];
 
     const pos = new Float32Array(count * 3);
     const col = new Float32Array(count * 3);
@@ -92,9 +94,10 @@ export class Starfield {
   }
 
   update(dt, elapsed) {
-    const t = this.rail.t;
-    // Stars appear as the atmosphere thins.
-    const vis = THREE.MathUtils.smoothstep(t, 0.6, 0.86);
+    // Stars appear as the atmosphere thins — or are simply always there.
+    const vis = this.always
+      ? 1
+      : THREE.MathUtils.smoothstep(this.host.t, this.fadeIn[0], this.fadeIn[1]);
     this.mat.uniforms.uOpacity.value = vis;
     this.mat.uniforms.uTime.value = elapsed;
     this.points.visible = vis > 0.01;
