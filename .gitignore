@@ -10,3 +10,7 @@
 # referenced by any page; re-add via Git LFS if they're needed later.
 /_assets/media/IMG_0667.MOV
 /_assets/media/IMG_0800.MOV
+
+# Python bytecode, e.g. from importing homepage2.0/devserver.py.
+__pycache__/
+*.pyc
