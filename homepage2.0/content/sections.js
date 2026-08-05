@@ -19,6 +19,10 @@
  *   kicker    tiny monospace overline ("Dossier 03", "Interest", …)
  *   title     headline for the projected label and the detail panel
  *   image     path to a still, or null for a procedural instrument card
+ *   video     optional looping alpha WebM played on the card instead of the
+ *             still. Its transparency is kept, so the subject floats in the
+ *             frame rather than sitting on a lit rectangle. `image` stays on as
+ *             the chart thumbnail and the fallback if the video can't play.
  *   aspect    card aspect ratio (w/h). Optional; defaults to 1.5
  *   glyph     motif drawn behind the card:
  *             'ring' | 'sonar' | 'grid' | 'orbit' | 'run'. Optional.
@@ -93,7 +97,8 @@ export const SECTIONS = [
     kicker: 'Dossier 02',
     title: 'What makes a robot interesting?',
     image: './public/media/battlebots.jpg',
-    aspect: 1.52,
+    video: './public/media/turntable/complete-control.webm',
+    aspect: 1.78,
     glyph: 'grid',
     body: [
       "Some of the biggest and most advanced robotics projects of today — read: autonomous cars — don't look like robots. Others, like my beloved battlebots, would be outcast by the academic neckbeards as not being robots at all.",

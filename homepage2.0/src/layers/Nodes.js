@@ -4,6 +4,21 @@ import { NOISE_GLSL } from '../core/theme.js';
 const CARD_H = 5.4;
 
 /**
+ * Can this browser decode WebM at all? Safari mostly can't, and where it can it
+ * ignores the alpha channel, so cut-out cards fall back to the still there.
+ */
+let _alphaVideo;
+function canPlayAlphaVideo() {
+  if (_alphaVideo === undefined) {
+    const v = document.createElement('video');
+    const webm = !!v.canPlayType('video/webm; codecs="vp9"');
+    const safari = /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent);
+    _alphaVideo = webm && !safari;
+  }
+  return _alphaVideo;
+}
+
+/**
  * Nodes — the content beacons for one realm.
  *
  * Placement comes entirely from the realm (`Realm.nodeTransform`), so each theme
@@ -53,10 +68,26 @@ export class Nodes {
     const scheme = this.light ? 1 : 0;
 
     // ---- card
-    const texture = !crossLink && section.image ? loader.load(section.image) : null;
-    if (texture) {
+    // A section may carry a looping alpha video instead of a still. Browsers
+    // that can't decode WebM fall back to the section's image, which also
+    // covers Safari — it plays WebM but ignores the alpha channel.
+    let video = null;
+    let texture = null;
+    const still = () => {
+      const tex = loader.load(section.image);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      return tex;
+    };
+
+    if (!crossLink && section.video && canPlayAlphaVideo()) {
+      video = document.createElement('video');
+      Object.assign(video, { loop: true, muted: true, playsInline: true, preload: 'auto' });
+      video.src = section.video;
+      texture = new THREE.VideoTexture(video);
       texture.colorSpace = THREE.SRGBColorSpace;
-      texture.anisotropy = 4;
+    } else if (!crossLink && section.image) {
+      texture = still();
     }
 
     const cardMat = new THREE.ShaderMaterial({
@@ -67,6 +98,7 @@ export class Nodes {
       uniforms: {
         uMap: { value: texture },
         uHasMap: { value: texture ? 1 : 0 },
+        uIsVideo: { value: video ? 1 : 0 },
         uTime: { value: 0 },
         uFocus: { value: 0 },
         uHover: { value: 0 },
@@ -89,7 +121,7 @@ export class Nodes {
       `,
       fragmentShader: /* glsl */ `
         uniform sampler2D uMap;
-        uniform float uHasMap, uTime, uFocus, uHover, uAspect, uReveal, uScheme, uCross;
+        uniform float uHasMap, uIsVideo, uTime, uFocus, uHover, uAspect, uReveal, uScheme, uCross;
         uniform vec3 uAccent;
         varying vec2 vUv;
         ${NOISE_GLSL}
@@ -111,7 +143,8 @@ export class Nodes {
           float alpha;
 
           if (uHasMap > 0.5) {
-            vec3 img = texture2D(uMap, uv).rgb;
+            vec4 tex = texture2D(uMap, uv);
+            vec3 img = tex.rgb;
             float lum = dot(img, vec3(0.2126, 0.7152, 0.0722));
             // Unfocused: a graded ghost. Focused: the real photograph.
             vec3 ghost = mix(uAccent * lum * 0.85, vec3(lum), 0.35);
@@ -122,6 +155,10 @@ export class Nodes {
             col = mix(vec3(cl), col, 1.0 + uFocus * 0.35);
             col *= 0.6 + uFocus * 0.6;
             alpha = 0.5 + uFocus * 0.48;
+            // A cut-out video keeps its own silhouette, so the subject floats
+            // in the frame instead of riding on a lit rectangle. The rim below
+            // still draws the card edge, so the station stays legible.
+            alpha *= mix(1.0, tex.a, uIsVideo);
           } else {
             // Procedural instrument face.
             float grid = max(
@@ -248,10 +285,24 @@ export class Nodes {
 
     this.object3D.add(group);
 
+    // If the video turns out to be undecodable after all, quietly swap in the
+    // still rather than leaving an empty frame.
+    if (video && section.image) {
+      video.addEventListener(
+        'error',
+        () => {
+          cardMat.uniforms.uMap.value = still();
+          cardMat.uniforms.uIsVideo.value = 0;
+        },
+        { once: true }
+      );
+    }
+
     return {
       section,
       at,
       crossLink,
+      video,
       group,
       card,
       cardMat,
@@ -387,6 +438,11 @@ export class Nodes {
     return best;
   }
 
+  /** Realm left the stage — stop decoding until we're back. */
+  onExit() {
+    for (const it of this.items) it.video?.pause();
+  }
+
   // ----------------------------------------------------------------- frame
   update(dt, elapsed) {
     const t = this.realm.t;
@@ -404,6 +460,11 @@ export class Nodes {
 
       const inRange = d < 0.24;
       it.group.visible = inRange;
+      // Only decode while the station is on screen.
+      if (it.video) {
+        if (inRange && it.video.paused) it.video.play().catch(() => {});
+        else if (!inRange && !it.video.paused) it.video.pause();
+      }
       if (!inRange) continue;
 
       it.reveal += ((1 - THREE.MathUtils.smoothstep(d, 0.08, 0.18)) - it.reveal) * k * 0.6;

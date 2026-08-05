@@ -69,6 +69,9 @@ export class Realm {
   /** Called once the transition away from this realm has finished. */
   exit() {
     this.object3D.visible = false;
+    // Only the active realm is updated, so layers holding live resources
+    // (video decoding, say) need a chance to stand down.
+    for (const layer of this.layers) layer.onExit?.();
   }
 
   dispose() {
